@@ -60,6 +60,11 @@ body{display:flex;align-items:center;justify-content:center}
 #ba .ban{font-family:'Press Start 2P',monospace;font-size:11px;letter-spacing:2px}
 #ba .bad{font-family:'Press Start 2P',monospace;font-size:6px;color:#ccc;text-align:center;padding:0 20px}
 
+/* SURVIVAL SCORE */
+#surv-score{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;pointer-events:none;z-index:20}
+#surv-score .ss-pts{font-family:'Press Start 2P',monospace;font-size:36px;color:#fff;text-shadow:0 0 16px #fff;line-height:1}
+#surv-score .ss-best{font-family:'Press Start 2P',monospace;font-size:8px;color:#007a1f;margin-top:6px;letter-spacing:2px}
+#surv-score .ss-mult{font-family:'Press Start 2P',monospace;font-size:11px;color:#ffb800;text-shadow:0 0 8px #ffb800;margin-top:4px}
 /* SCORE POP */
 .spop{position:absolute;font-family:'Press Start 2P',monospace;font-size:28px;pointer-events:none;z-index:35;animation:spopA .7s ease-out forwards}
 @keyframes spopA{0%{opacity:1;transform:translateY(0) scale(1.4)}100%{opacity:0;transform:translateY(-60px) scale(0.8)}}
@@ -136,6 +141,11 @@ body{display:flex;align-items:center;justify-content:center}
     </div>
   </div>
 
+  <div id="surv-score">
+    <div class="ss-pts" id="ss-pts">0</div>
+    <div class="ss-best" id="ss-best">BEST: 0</div>
+    <div class="ss-mult" id="ss-mult"></div>
+  </div>
   <div id="ba"><div class="bai" id="bai"></div><div class="ban" id="ban"></div><div class="bad" id="bad"></div></div>
   <div id="ach"><div class="at">ACHIEVEMENT</div><div class="an" id="achn"></div></div>
   <div id="fl"></div>
@@ -409,6 +419,8 @@ function updateTimers(){
 var WIN_SCORE=20,spd=5,appState='menu',g=null,animId=null;
 var gameMode='2p'; // '2p' or 'ai'
 var aiDiff='medium'; // 'easy' 'medium' 'hard'
+var survScore=0, survBest=0, survMult=1;
+var survEl, survPtsEl, survBestEl, survMultEl;
 var touchP1=null,touchP2=null,keys={};
 var trails=[[],[],[]];
 
@@ -419,6 +431,12 @@ var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
 var s1El=document.getElementById('s1'),s2El=document.getElementById('s2');
 var wnEl=document.getElementById('wn'),wscEl=document.getElementById('wsc');
 var baEl=document.getElementById('ba');
+survEl=document.getElementById('surv-score');
+survPtsEl=document.getElementById('ss-pts');
+survBestEl=document.getElementById('ss-best');
+survMultEl=document.getElementById('ss-mult');
+// load best from localStorage
+try { var lb=localStorage.getItem('pong_best'); if(lb) survBest=parseInt(lb)||0; } catch(e){}
 
 // speed buttons
 var sg=document.getElementById('sg');
@@ -496,6 +514,19 @@ document.getElementById('ppb').addEventListener('click',togglePause);
 poEl.addEventListener('click',function(){if(appState==='paused')togglePause();});
 
 // ═══ NAVIGATION ══════════════════════════════════════
+function showSurvivalOver(){
+  cancelAnimationFrame(animId); appState='win';
+  var isRecord=survScore>=survBest&&survScore>0;
+  wnEl.textContent=isRecord?'NEW RECORD!':'GAME OVER';
+  wnEl.style.color=isRecord?'#ffb800':'#ff2244';
+  wnEl.style.textShadow=isRecord?'0 0 20px #ffb800':'0 0 20px #ff2244';
+  wscEl.textContent='SCORE: '+survScore+'  BEST: '+survBest;
+  menuEl.style.display='none'; gameEl.style.display='none';
+  wsEl.style.display='flex'; poEl.style.display='none';
+  if(isRecord){ SFX.win(); flash('#ffb800',0.6); }
+  else { flash('#ff2244',0.5); }
+  survEl.style.display='none';
+}
 function showMenu(){cancelAnimationFrame(animId);appState='menu';menuEl.style.display='flex';gameEl.style.display='none';wsEl.style.display='none';poEl.style.display='none';}
 function showWin(who,sc1,sc2){
   cancelAnimationFrame(animId);appState='win';
@@ -598,6 +629,7 @@ function startGame(){
       streak:0,lastScorer:null,comeback:false,shieldSaved:false,chaosHits:0,tripleScore:false,bigballHit:false
     };
     s1El.textContent='0';s2El.textContent='0';
+    initSurvival();
     // update P2 HUD label for AI
     var p2nameEls=document.querySelectorAll('.hn');
     if(gameMode==='ai'){ // top hud is rotated, second .hn
@@ -713,6 +745,13 @@ function hitPaddle(b,who,bi){
       var isFire=(g.p1.buff==='fire'||g.p2.buff==='fire')&&!b.extra;
       var isBig=g.p1.buff==='bigball'||g.p2.buff==='bigball';
       if(isBig)g.bigballHit=true;
+      // survival scoring — only when P1 hits
+      if(who==='p1'&&gameMode==='ai'){
+        var hasActiveBuff=g.p1.buff!==null;
+        survMult=hasActiveBuff?2:1;
+        addSurvPoints(1);
+        updateSurvUI();
+      }
       if(isFire){
         firePuff(b.x,b.y,32);SFX.fire();flash('#ff4400',0.38);shake(7);
         ring(b.x,b.y,'#ff6600',18);ring(b.x,b.y,'#ffee00',9);spark(b.x,b.y,'#fff',8,6);
@@ -743,6 +782,14 @@ function scorePoint(who,bx,by){
   SFX.score();goalBurst(bx,by);flash('#ffffff',0.6);shake(14);cyclePal();
   if(g.lastScorer===who)g.streak++;else{g.lastScorer=who;g.streak=1;}
   if(g[opp].score-g[who].score>=4&&g[who].score>0)g.comeback=true;
+  if(gameMode==='ai'){
+    if(who==='p2'){
+      // AI scored — game over for player
+      showSurvivalOver();return;
+    }
+    // player scored against AI — just reset, no win condition
+    resetBall(who==='p1'?-1:1);return;
+  }
   if(g[who].score>=WIN_SCORE){showWin('PLAYER '+(who==='p1'?'1':'2'),g.p1.score,g.p2.score);return;}
   resetBall(who==='p1'?-1:1);
 }
@@ -855,6 +902,54 @@ function drawBall(b){
   ctx.shadowBlur=0;
 }
 
+// ═══ SURVIVAL SCORE ═════════════════════════════════
+function initSurvival(){
+  survScore=0; survMult=1;
+  updateSurvUI();
+  if(gameMode==='ai'){
+    survEl.style.display='flex';
+    // hide normal scores in AI mode
+    document.getElementById('s1').style.visibility='hidden';
+    document.getElementById('s2').style.visibility='hidden';
+  } else {
+    survEl.style.display='none';
+    document.getElementById('s1').style.visibility='visible';
+    document.getElementById('s2').style.visibility='visible';
+  }
+}
+function addSurvPoints(hits){
+  if(gameMode!=='ai') return;
+  var pts=hits*survMult;
+  survScore+=pts;
+  if(survScore>survBest){
+    survBest=survScore;
+    try{ localStorage.setItem('pong_best', survBest); }catch(e){}
+  }
+  // show floating pts
+  showSurvPop('+'+pts+(survMult>1?' x'+survMult:''));
+  updateSurvUI();
+}
+function updateSurvUI(){
+  if(survPtsEl) survPtsEl.textContent=survScore;
+  if(survBestEl) survBestEl.textContent='BEST: '+survBest;
+  if(survMultEl){
+    if(survMult>1){ survMultEl.textContent='x'+survMult+' MULT!'; survMultEl.style.display='block'; }
+    else { survMultEl.textContent=''; survMultEl.style.display='none'; }
+  }
+}
+var survPopTimer=null;
+function showSurvPop(txt){
+  // reuse score pop
+  var el=document.createElement('div');
+  el.className='spop';
+  el.textContent=txt;
+  el.style.color='#ffee00';
+  el.style.fontSize='20px';
+  el.style.left='50%'; el.style.marginLeft='-30px';
+  el.style.top=(cv.getBoundingClientRect().top+cv.height*0.55)+'px';
+  document.getElementById('cab').appendChild(el);
+  setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},700);
+}
 // ═══ AI ═════════════════════════════════════════════
 function updateAI(){
   if(!g||gameMode!=='ai') return;
