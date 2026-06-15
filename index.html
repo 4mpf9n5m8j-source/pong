@@ -592,6 +592,19 @@ var ARK_COLORS = [
   '#888888', // 8 indestructible
 ];
 
+// Arkanoid powerup types
+var ARK_BUFFS = [
+  {id:'wide',    icon:'⬛', name:'WIDE',    desc:'Платформа x1.8',     color:'#00ff41', dur:8000},
+  {id:'multi',   icon:'🎱', name:'MULTI',   desc:'3 мяча',             color:'#00cfff', dur:10000},
+  {id:'slow',    icon:'🐢', name:'SLOW',    desc:'Мяч медленнее',      color:'#ffb800', dur:7000},
+  {id:'sticky',  icon:'🍯', name:'STICKY',  desc:'Мяч прилипает',      color:'#ff8800', dur:6000},
+  {id:'laser',   icon:'🔴', name:'LASER',   desc:'+1 жизнь',           color:'#ff2244', dur:0},
+  {id:'bomb',    icon:'💣', name:'BOMB',    desc:'Взрыв блоков рядом', color:'#ff4400', dur:0},
+  {id:'tiny',    icon:'🔵', name:'TINY',    desc:'Маленький мяч',      color:'#cc44ff', dur:6000},
+];
+
+function getArkBuff(id){ for(var i=0;i<ARK_BUFFS.length;i++) if(ARK_BUFFS[i].id===id) return ARK_BUFFS[i]; return null; }
+
 function buildBlocks(round) {
   var W = cv.width, H = cv.height;
   var layout = ARK_ROUNDS[(round-1) % ARK_ROUNDS.length];
@@ -623,6 +636,13 @@ function startArk() {
   gameEl.style.display='none'; menuEl.style.display='none';
   wsEl.style.display='none'; poEl.style.display='none';
   survEl.style.display='none';
+  // hide buff timer circles — not used in ark mode
+  document.getElementById('ct1').style.display='none';
+  document.getElementById('ct2').style.display='none';
+  document.getElementById('bi1').textContent='';
+  document.getElementById('bi2').textContent='';
+  document.getElementById('bn1').textContent='';
+  document.getElementById('bn2').textContent='';
   document.getElementById('s1').style.visibility='hidden';
   document.getElementById('s2').style.visibility='hidden';
 
@@ -649,7 +669,7 @@ function initArkRound(round, score) {
   ark = {
     round: round,
     score: score,
-    lives: 3,
+    lives: ark ? ark.lives : 3,
     paddle: { cx: W/2, w: padW, h: Math.max(10, H*0.022) },
     ball: { x: W/2, y: H*0.78, vx: Math.cos(ang)*spd2, vy: Math.sin(ang)*spd2, r: ballR2, launched: false },
     blocks: buildBlocks(round),
@@ -659,6 +679,11 @@ function initArkRound(round, score) {
     comboTimer: 0,
     paused: false,
     over: false,
+    buffs: {},       // active buffs {id: endTime}
+    buffEnd: {},
+    drops: [],       // falling powerup drops
+    extraBalls: [],  // for multi-ball
+    sticky: false,   // ball stuck to paddle
   };
   arkTouchX = null; arkTouchId = null;
 
@@ -702,9 +727,13 @@ function updateArk() {
   if(b.vy>0 && b.y+b.r>=py-p.h/2 && b.y+b.r<=py+p.h/2+Math.abs(b.vy)*2){
     if(b.x>=p.cx-p.w/2 && b.x<=p.cx+p.w/2){
       b.y=py-p.h/2-b.r;
-      var rel=(b.x-p.cx)/(p.w/2);
-      b.vy=-Math.abs(b.vy);
-      b.vx=rel*Math.abs(b.vy)*1.4;
+      if(ark.buffs['sticky']){
+        b.vx=0; b.vy=0; b.launched=false; ark.sticky=true;
+      } else {
+        var rel=(b.x-p.cx)/(p.w/2);
+        b.vy=-Math.abs(b.vy);
+        b.vx=rel*Math.abs(b.vy)*1.4;
+      }
       // normalize speed
       var spnow=Math.sqrt(b.vx*b.vx+b.vy*b.vy);
       var target=(5+(ark.round-1)*0.8)*(H/700);
@@ -714,6 +743,13 @@ function updateArk() {
       arkSpark(b.x,b.y,'#00ff41',8,3);
       vib([12]);
     }
+  }
+
+  // slow buff — cap ball speed
+  if(ark.buffs['slow']){
+    var maxS=(5+(ark.round-1)*0.8)*(H/700)*0.55;
+    var curS=Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+    if(curS>maxS&&curS>0){ b.vx=b.vx/curS*maxS; b.vy=b.vy/curS*maxS; }
   }
 
   // ball lost
@@ -751,6 +787,11 @@ function updateArk() {
         arkSpark(cx2,cy2,col,14,5,35);
         ring(cx2,cy2,col,12,16);
         flash(col,0.1);
+        // 30% chance drop powerup
+        if(Math.random()<0.30){
+          var rb=ARK_BUFFS[Math.floor(Math.random()*ARK_BUFFS.length)];
+          ark.drops.push({x:cx2,y:cy2,buff:rb,pulse:0});
+        }
         ark.combo++;
         ark.comboTimer=60;
         var pts=10*(ark.combo>3?2:1);
@@ -777,6 +818,77 @@ function updateArk() {
   for(var bi2=0;bi2<ark.blocks.length;bi2++) if(ark.blocks[bi2].hp>0) nb.push(ark.blocks[bi2]);
   ark.blocks=nb;
 
+  // ── ARK BUFFS: expire ──
+  var now2=Date.now();
+  var bids=Object.keys(ark.buffs);
+  for(var bki=0;bki<bids.length;bki++){
+    var bid=bids[bki];
+    if(ark.buffEnd[bid]&&now2>ark.buffEnd[bid]){
+      delete ark.buffs[bid]; delete ark.buffEnd[bid];
+      if(bid==='wide') ark.paddle.w=cv.width*0.22;
+      if(bid==='tiny') ark.ball.r=cv.width*0.022;
+    }
+  }
+
+  // ── EXTRA BALLS (multi buff) ──
+  if(ark.extraBalls&&ark.extraBalls.length>0){
+    var W2=cv.width,H2=cv.height;
+    var nextEB=[];
+    for(var ebi=0;ebi<ark.extraBalls.length;ebi++){
+      var eb=ark.extraBalls[ebi];
+      eb.x+=eb.vx; eb.y+=eb.vy;
+      if(eb.x-eb.r<=0){eb.x=eb.r;eb.vx=Math.abs(eb.vx);}
+      if(eb.x+eb.r>=W2){eb.x=W2-eb.r;eb.vx=-Math.abs(eb.vx);}
+      if(eb.y-eb.r<=0){eb.y=eb.r;eb.vy=Math.abs(eb.vy);}
+      // paddle
+      var epy=H2-H2*0.1-ark.paddle.h/2;
+      if(eb.vy>0&&eb.y+eb.r>=epy-ark.paddle.h/2&&eb.y+eb.r<=epy+ark.paddle.h/2+Math.abs(eb.vy)*2){
+        if(eb.x>=ark.paddle.cx-ark.paddle.w/2&&eb.x<=ark.paddle.cx+ark.paddle.w/2){
+          eb.y=epy-ark.paddle.h/2-eb.r; eb.vy=-Math.abs(eb.vy);
+          var rel2=(eb.x-ark.paddle.cx)/(ark.paddle.w/2);
+          eb.vx=rel2*Math.abs(eb.vy)*1.2;
+        }
+      }
+      // blocks
+      for(var bi5=0;bi5<ark.blocks.length;bi5++){
+        var bl2=ark.blocks[bi5]; if(bl2.hp<=0) continue;
+        var nx=Math.max(bl2.x,Math.min(eb.x,bl2.x+bl2.w));
+        var ny=Math.max(bl2.y,Math.min(eb.y,bl2.y+bl2.h));
+        var ddx=eb.x-nx,ddy=eb.y-ny;
+        if(ddx*ddx+ddy*ddy<eb.r*eb.r){
+          var ox=eb.r-Math.abs(ddx),oy=eb.r-Math.abs(ddy);
+          if(ox<oy){eb.vx=-eb.vx;}else{eb.vy=-eb.vy;}
+          if(bl2.type!==8){bl2.hp--;bl2.flash=6;arkSpark(bl2.x+bl2.w/2,bl2.y+bl2.h/2,ARK_COLORS[bl2.type]||'#fff',8,4,25);ark.score+=5;}
+          break;
+        }
+      }
+      if(eb.y<H2+eb.r*3) nextEB.push(eb);
+    }
+    ark.extraBalls=nextEB;
+    // expire multi buff when balls gone
+    if(nextEB.length===0&&ark.buffs['multi']) delete ark.buffs['multi'];
+  }
+
+  // ── ARK DROPS: move & collect ──
+  var nextDrops=[];
+  for(var di=0;di<ark.drops.length;di++){
+    var dr=ark.drops[di];
+    dr.y+=3; dr.pulse++;
+    // collect
+    var py2=cv.height-cv.height*0.1-ark.paddle.h/2;
+    if(dr.y+12>=py2-ark.paddle.h/2&&dr.y-12<=py2+ark.paddle.h/2){
+      if(dr.x>=ark.paddle.cx-ark.paddle.w/2-12&&dr.x<=ark.paddle.cx+ark.paddle.w/2+12){
+        applyArkBuff(dr.buff);
+        arkSpark(dr.x,dr.y,dr.buff.color,16,5,35);
+        ring(dr.x,dr.y,dr.buff.color,16,20);
+        flash(dr.buff.color,0.3); SFX.powerup();
+        continue;
+      }
+    }
+    if(dr.y<cv.height+20) nextDrops.push(dr);
+  }
+  ark.drops=nextDrops;
+
   // update block flash
   for(var bi3=0;bi3<ark.blocks.length;bi3++) if(ark.blocks[bi3].flash>0) ark.blocks[bi3].flash--;
 
@@ -797,6 +909,7 @@ function updateArk() {
     flash('#ffee00',0.6); shake(12);
     SFX.win(); vib([40,20,40,20,80]);
     ark.paused=true;
+    wsEl.style.display='none'; // hide any lingering win screen
     setTimeout(function(){
       if(appState==='game') initArkRound(ark.round+1, ark.score);
     },1800);
@@ -810,6 +923,55 @@ function arkSpark(x,y,color,n,spd,life){
     var a=Math.random()*Math.PI*2,s=(0.4+Math.random())*spd;
     ark.particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:life,ml:life,color:color,r:1.5+Math.random()*3,grav:0.12});
   }
+}
+
+
+function applyArkBuff(buff){
+  if(!ark) return;
+  var now3=Date.now();
+  if(buff.id==='laser'){ // extra life
+    ark.lives=Math.min(ark.lives+1,5);
+    showSurvPop('+1 ♥');
+    SFX.achiev();
+    return;
+  }
+  if(buff.id==='bomb'){ // destroy nearby blocks
+    var bx2=ark.ball.x, by2=ark.ball.y;
+    var radius=cv.width*0.28;
+    for(var i=0;i<ark.blocks.length;i++){
+      var bl=ark.blocks[i];
+      if(bl.type===8) continue;
+      var bcx=bl.x+bl.w/2, bcy=bl.y+bl.h/2;
+      if(Math.sqrt((bcx-bx2)*(bcx-bx2)+(bcy-by2)*(bcy-by2))<radius){
+        arkSpark(bcx,bcy,ARK_COLORS[bl.type]||'#fff',10,4,30);
+        ark.score+=10; bl.hp=0;
+      }
+    }
+    ring(bx2,by2,'#ff4400',radius,36); ring(bx2,by2,'#ffee00',radius*0.6,24);
+    flash('#ff4400',0.5); shake(12); SFX.fire();
+    return;
+  }
+  if(buff.id==='multi'){ // spawn 2 extra balls
+    for(var mi=0;mi<2;mi++){
+      var ang2=(Math.random()-0.5)*Math.PI;
+      var sp2=Math.sqrt(ark.ball.vx*ark.ball.vx+ark.ball.vy*ark.ball.vy)||5;
+      ark.drops.push({}); // placeholder removed — use ark.balls
+    }
+    // store extra balls in ark.balls
+    if(!ark.extraBalls) ark.extraBalls=[];
+    for(var mi2=0;mi2<2;mi2++){
+      var ang3=-Math.PI/2+(Math.random()-0.5)*1.2;
+      var sp3=Math.sqrt(ark.ball.vx*ark.ball.vx+ark.ball.vy*ark.ball.vy)||5*(cv.height/700);
+      ark.extraBalls.push({x:ark.ball.x,y:ark.ball.y,vx:Math.cos(ang3)*sp3,vy:Math.sin(ang3)*sp3,r:ark.ball.r});
+    }
+    SFX.triple();
+    ark.buffs[buff.id]=true; ark.buffEnd[buff.id]=now3+buff.dur;
+    return;
+  }
+  ark.buffs[buff.id]=true; ark.buffEnd[buff.id]=now3+buff.dur;
+  if(buff.id==='wide')  ark.paddle.w=cv.width*0.22*1.85;
+  if(buff.id==='tiny')  ark.ball.r=cv.width*0.022*0.45;
+  if(buff.id==='sticky')ark.sticky=true;
 }
 
 function arkGameOver(){
@@ -889,6 +1051,55 @@ function drawArk(){
 
   // global P array too
   drawP(ctx);
+
+  // draw drops (falling powerups)
+  if(ark.drops){
+    for(var di2=0;di2<ark.drops.length;di2++){
+      var dr2=ark.drops[di2];
+      if(!dr2||!dr2.buff) continue;
+      var dsc=1+Math.sin(dr2.pulse*0.15)*0.2;
+      ctx.globalAlpha=1;
+      ctx.shadowColor=dr2.buff.color; ctx.shadowBlur=12;
+      ctx.fillStyle=dr2.buff.color+'99';
+      ctx.beginPath(); ctx.arc(dr2.x,dr2.y,14*dsc,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=dr2.buff.color;
+      ctx.beginPath(); ctx.arc(dr2.x,dr2.y,10*dsc,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.font=Math.round(11*dsc)+'px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillStyle='#000'; ctx.fillText(dr2.buff.icon,dr2.x,dr2.y);
+    }
+    ctx.globalAlpha=1;
+  }
+
+  // draw extra balls
+  if(ark.extraBalls){
+    for(var ebi2=0;ebi2<ark.extraBalls.length;ebi2++){
+      var eb2=ark.extraBalls[ebi2];
+      var egr=ctx.createRadialGradient(eb2.x,eb2.y,0,eb2.x,eb2.y,eb2.r*4);
+      egr.addColorStop(0,'rgba(255,180,0,0.6)'); egr.addColorStop(1,'rgba(255,180,0,0)');
+      ctx.fillStyle=egr; ctx.beginPath(); ctx.arc(eb2.x,eb2.y,eb2.r*4,0,Math.PI*2); ctx.fill();
+      ctx.shadowColor='#ffb800'; ctx.shadowBlur=12;
+      ctx.fillStyle='#ffee00'; ctx.beginPath(); ctx.arc(eb2.x,eb2.y,eb2.r,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+    }
+  }
+
+  // draw active buff icons (bottom left)
+  var bkeys=Object.keys(ark.buffs||{}), bx3=12, by3=H-H*0.1-ark.paddle.h-28;
+  for(var bki2=0;bki2<bkeys.length;bki2++){
+    var bb2=getArkBuff(bkeys[bki2]); if(!bb2||!bb2.dur) continue;
+    var rem=Math.max(0,(ark.buffEnd[bkeys[bki2]]-Date.now())/bb2.dur);
+    ctx.globalAlpha=0.9;
+    ctx.shadowColor=bb2.color; ctx.shadowBlur=8;
+    ctx.fillStyle=bb2.color+'44'; ctx.beginPath(); ctx.arc(bx3+10,by3,13,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=bb2.color; ctx.beginPath(); ctx.arc(bx3+10,by3,13,-Math.PI/2,-Math.PI/2+Math.PI*2*rem); ctx.lineTo(bx3+10,by3); ctx.closePath(); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#000'; ctx.fillText(bb2.icon,bx3+10,by3);
+    ctx.globalAlpha=1;
+    bx3+=32;
+  }
 
   // trail
   for(var ti=0;ti<ark.trail.length;ti++){
