@@ -518,6 +518,232 @@ poEl.addEventListener('click',function(){if(appState==='paused')togglePause();})
 
 // ═══ NAVIGATION ══════════════════════════════════════
 
+
+// ══════════════════════════════════════════════════════
+// PROCEDURAL MUSIC ENGINE
+// ══════════════════════════════════════════════════════
+var MUS = {
+  nodes: [],      // all running nodes to stop
+  masterGain: null,
+  compressor: null,
+  running: false,
+  round: 0,
+  beatInterval: null,
+  beat: 0,
+  tempo: 120,     // bpm
+};
+
+// Scales: notes as semitone offsets from root (A2 = 110hz)
+var SCALES = {
+  minor:      [0,2,3,5,7,8,10],
+  phrygian:   [0,1,3,5,7,8,10],
+  dorian:     [0,2,3,5,7,9,10],
+  chromatic:  [0,1,2,3,4,5,6,7,8,9,10,11],
+  pentatonic: [0,2,4,7,9],
+};
+
+function noteHz(semitone){
+  return 110 * Math.pow(2, semitone/12);
+}
+
+function musNote(freq, dur, type, vol, delay, vibrato){
+  if(!AC||!MUS.masterGain) return null;
+  try {
+    var o=AC.createOscillator(), g=AC.createGain();
+    if(vibrato){
+      var lfo=AC.createOscillator(), lfoG=AC.createGain();
+      lfo.frequency.value=vibrato.rate||5;
+      lfoG.gain.value=vibrato.depth||4;
+      lfo.connect(lfoG); lfoG.connect(o.frequency);
+      lfo.start(AC.currentTime+(delay||0));
+      lfo.stop(AC.currentTime+(delay||0)+dur+0.1);
+      MUS.nodes.push(lfo);
+    }
+    o.connect(g); g.connect(MUS.masterGain);
+    o.type=type||'sine';
+    o.frequency.value=freq;
+    var t0=AC.currentTime+(delay||0);
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol||0.08, t0+0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+    o.start(t0); o.stop(t0+dur+0.05);
+    MUS.nodes.push(o); MUS.nodes.push(g);
+    return o;
+  } catch(e){ return null; }
+}
+
+function musStop(){
+  clearInterval(MUS.beatInterval);
+  MUS.beatInterval=null;
+  MUS.running=false;
+  for(var i=0;i<MUS.nodes.length;i++){
+    try{ MUS.nodes[i].stop(AC.currentTime+0.05); }catch(e){}
+    try{ MUS.nodes[i].disconnect(); }catch(e){}
+  }
+  MUS.nodes=[];
+  if(MUS.masterGain){ try{MUS.masterGain.disconnect();}catch(e){} MUS.masterGain=null; }
+}
+
+function musStart(round){
+  musStop();
+  if(!AC) return;
+  resumeAC();
+
+  MUS.masterGain=AC.createGain();
+  var comp=AC.createDynamicsCompressor();
+  MUS.masterGain.connect(comp); comp.connect(AC.destination);
+  MUS.masterGain.gain.value=0.0;
+  // fade in
+  MUS.masterGain.gain.linearRampToValueAtTime(0.55, AC.currentTime+2.0);
+
+  MUS.round=round;
+  MUS.beat=0;
+  MUS.running=true;
+
+  // Round configs — each round: tempo, scale, style, bassVol, melVol, tension
+  var configs=[
+    // Round 1 — calm, slow, ambient minor
+    {tempo:72, scale:'pentatonic', root:-12, bass:true, melody:true, arp:false,
+     bassVol:0.12, melVol:0.06, drumVol:0, tension:0, type:'triangle', melType:'sine'},
+    // Round 2 — gentle pulse, dorian
+    {tempo:88, scale:'dorian', root:-12, bass:true, melody:true, arp:true,
+     bassVol:0.14, melVol:0.07, drumVol:0.04, tension:1, type:'triangle', melType:'triangle'},
+    // Round 3 — building, minor, kick drum
+    {tempo:100, scale:'minor', root:-9, bass:true, melody:true, arp:true,
+     bassVol:0.16, melVol:0.08, drumVol:0.07, tension:2, type:'sawtooth', melType:'triangle'},
+    // Round 4 — driving, phrygian, heavier
+    {tempo:115, scale:'phrygian', root:-9, bass:true, melody:true, arp:true,
+     bassVol:0.18, melVol:0.09, drumVol:0.1, tension:3, type:'sawtooth', melType:'square'},
+    // Round 5 — intense, fast minor, full drums
+    {tempo:130, scale:'minor', root:-7, bass:true, melody:true, arp:true,
+     bassVol:0.20, melVol:0.10, drumVol:0.13, tension:4, type:'sawtooth', melType:'sawtooth'},
+    // Round 6+ — CHAOS, chromatic, maximum intensity
+    {tempo:150, scale:'chromatic', root:-7, bass:true, melody:true, arp:true,
+     bassVol:0.22, melVol:0.12, drumVol:0.16, tension:5, type:'sawtooth', melType:'sawtooth'},
+  ];
+
+  var cfg=configs[Math.min(round-1, configs.length-1)];
+  var beatMs=Math.round(60000/cfg.tempo);
+  var sc=SCALES[cfg.scale];
+  var root=cfg.root;
+
+  // Bass patterns (scale degrees, index into scale)
+  var bassPatterns=[
+    [0,0,4,4, 0,0,3,3],         // calm
+    [0,3,4,3, 0,2,4,2],         // groove
+    [0,0,3,4, 5,4,3,0],         // walk
+    [0,4,0,4, 3,3,5,4],         // tension
+    [0,3,5,4, 0,3,5,7],         // drive
+    [0,1,3,4, 5,4,3,1],         // chaos
+  ];
+  // Melody patterns (scale degrees)
+  var melPatterns=[
+    [4,6,4,2, 0,-1,0,2],
+    [6,4,6,4, 3,4,3,2],
+    [6,5,4,3, 2,3,4,6],
+    [7,6,7,5, 4,5,6,7],
+    [7,6,5,4, 3,4,5,6],
+    [7,5,6,4, 3,5,4,6],
+  ];
+  // Arp patterns
+  var arpPatterns=[
+    [0,2,4,2],
+    [0,2,4,6],
+    [0,3,4,3],
+    [0,4,3,2],
+    [0,4,7,4],
+    [0,1,4,6],
+  ];
+
+  var bp=bassPatterns[Math.min(round-1,bassPatterns.length-1)];
+  var mp=melPatterns[Math.min(round-1,melPatterns.length-1)];
+  var ap=arpPatterns[Math.min(round-1,arpPatterns.length-1)];
+
+  MUS.beatInterval=setInterval(function(){
+    if(!MUS.running||!MUS.masterGain) return;
+    var bt=MUS.beat;
+    var beatSec=beatMs/1000;
+
+    // Bass note
+    if(cfg.bass){
+      var bIdx=bp[bt%bp.length];
+      var bSemi=root+sc[((bIdx%sc.length)+sc.length)%sc.length];
+      musNote(noteHz(bSemi), beatSec*0.85, cfg.type, cfg.bassVol);
+    }
+
+    // Melody (every 2 beats)
+    if(cfg.melody && bt%2===0){
+      var mIdx=mp[Math.floor(bt/2)%mp.length];
+      var mSemi=root+12+sc[((mIdx%sc.length)+sc.length)%sc.length];
+      var vib=cfg.tension>2?{rate:5,depth:3+cfg.tension}:null;
+      musNote(noteHz(mSemi), beatSec*1.6, cfg.melType, cfg.melVol, 0, vib);
+    }
+
+    // Arp (fast notes, tension>0)
+    if(cfg.arp && cfg.tension>0){
+      var aIdx=ap[bt%ap.length];
+      var aSemi=root+12+sc[((aIdx%sc.length)+sc.length)%sc.length];
+      // play as 16th notes subdivision
+      for(var sub=1;sub<=cfg.tension&&sub<=4;sub++){
+        var aSub=ap[(bt+sub)%ap.length];
+        var asSemi=root+12+sc[((aSub%sc.length)+sc.length)%sc.length];
+        musNote(noteHz(asSemi), beatSec*0.25, 'triangle', cfg.melVol*0.5, (sub*beatSec*0.25));
+      }
+    }
+
+    // Kick drum (sine thud)
+    if(cfg.drumVol>0 && bt%4===0){
+      try{
+        var ok=AC.createOscillator(),gk=AC.createGain();
+        ok.connect(gk);gk.connect(MUS.masterGain);
+        ok.type='sine'; ok.frequency.setValueAtTime(120,AC.currentTime);
+        ok.frequency.exponentialRampToValueAtTime(40,AC.currentTime+0.08);
+        gk.gain.setValueAtTime(cfg.drumVol,AC.currentTime);
+        gk.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.18);
+        ok.start();ok.stop(AC.currentTime+0.2);
+        MUS.nodes.push(ok);MUS.nodes.push(gk);
+      }catch(e){}
+    }
+
+    // Snare (noise burst on beat 2,6)
+    if(cfg.drumVol>0 && (bt%8===2||bt%8===6)){
+      try{
+        var len=Math.floor(AC.sampleRate*0.08);
+        var buf=AC.createBuffer(1,len,AC.sampleRate);
+        var d=buf.getChannelData(0);
+        for(var i=0;i<len;i++) d[i]=Math.random()*2-1;
+        var sn=AC.createBufferSource(),gn=AC.createGain();
+        var hpf=AC.createBiquadFilter();hpf.type='highpass';hpf.frequency.value=1200;
+        sn.buffer=buf;sn.connect(hpf);hpf.connect(gn);gn.connect(MUS.masterGain);
+        gn.gain.setValueAtTime(cfg.drumVol*0.6,AC.currentTime);
+        gn.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.08);
+        sn.start();
+        MUS.nodes.push(sn);MUS.nodes.push(gn);
+      }catch(e){}
+    }
+
+    // Hi-hat (tension>2, every beat)
+    if(cfg.drumVol>0&&cfg.tension>2){
+      try{
+        var hlen=Math.floor(AC.sampleRate*0.03);
+        var hbuf=AC.createBuffer(1,hlen,AC.sampleRate);
+        var hd=hbuf.getChannelData(0);
+        for(var hi=0;hi<hlen;hi++) hd[hi]=Math.random()*2-1;
+        var hn=AC.createBufferSource(),hg=AC.createGain();
+        var hhpf=AC.createBiquadFilter();hhpf.type='highpass';hhpf.frequency.value=8000;
+        hn.buffer=hbuf;hn.connect(hhpf);hhpf.connect(hg);hg.connect(MUS.masterGain);
+        hg.gain.setValueAtTime(cfg.drumVol*0.35,AC.currentTime);
+        hg.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.03);
+        hn.start();
+        MUS.nodes.push(hn);MUS.nodes.push(hg);
+      }catch(e){}
+    }
+
+    MUS.beat++;
+  }, beatMs);
+}
+
+
 // ══════════════════════════════════════════════════════
 // ARKANOID
 // ══════════════════════════════════════════════════════
@@ -689,6 +915,7 @@ function initArkRound(round, score) {
 
   cancelAnimationFrame(arkAnimId);
   appState = 'game';
+  musStart(round);
   arkLoop();
 }
 
@@ -976,6 +1203,7 @@ function applyArkBuff(buff){
 
 function arkGameOver(){
   ark.over=true;
+  musStop();
   cancelAnimationFrame(arkAnimId);
   appState='win';
   var isRecord=ark.score>=arkBest&&ark.score>0;
@@ -1210,7 +1438,7 @@ function showSurvivalOver(){
   else { flash('#ff2244',0.5); }
   survEl.style.display='none';
 }
-function showMenu(){cancelAnimationFrame(animId);appState='menu';menuEl.style.display='flex';gameEl.style.display='none';wsEl.style.display='none';poEl.style.display='none';}
+function showMenu(){musStop();cancelAnimationFrame(animId);appState='menu';menuEl.style.display='flex';gameEl.style.display='none';wsEl.style.display='none';poEl.style.display='none';}
 function showWin(who,sc1,sc2){
   cancelAnimationFrame(animId);appState='win';
   wnEl.textContent=who;wscEl.textContent=sc1+' : '+sc2;
