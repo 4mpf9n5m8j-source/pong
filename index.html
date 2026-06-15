@@ -62,7 +62,7 @@ body{display:flex;align-items:center;justify-content:center}
 
 /* SURVIVAL SCORE */
 #surv-score{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:none;flex-direction:column;align-items:center;pointer-events:none;z-index:20}
-#surv-score .ss-pts{font-family:'Press Start 2P',monospace;font-size:36px;color:#fff;text-shadow:0 0 16px #fff;line-height:1}
+#surv-score .ss-pts{font-family:'Press Start 2P',monospace;font-size:36px;color:#00ff41;text-shadow:0 0 16px #00ff41;line-height:1}
 #surv-score .ss-best{font-family:'Press Start 2P',monospace;font-size:8px;color:#007a1f;margin-top:6px;letter-spacing:2px}
 #surv-score .ss-mult{font-family:'Press Start 2P',monospace;font-size:11px;color:#ffb800;text-shadow:0 0 8px #ffb800;margin-top:4px}
 /* SCORE POP */
@@ -814,15 +814,17 @@ function draw(){
 
   if(!g)return;
 
-  // score display on canvas (big, center)
-  ctx.globalAlpha=0.12;
-  ctx.fillStyle=pal.p2;
-  ctx.font='bold 80px "Press Start 2P",monospace';
-  ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(g.p2.score,W/2,H*0.28);
-  ctx.fillStyle=pal.p1;
-  ctx.fillText(g.p1.score,W/2,H*0.72);
-  ctx.globalAlpha=1;
+  // score display on canvas — only in 2p mode
+  if(gameMode!=='ai'){
+    ctx.globalAlpha=0.12;
+    ctx.fillStyle=pal.p2;
+    ctx.font='bold 80px "Press Start 2P",monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(g.p2.score,W/2,H*0.28);
+    ctx.fillStyle=pal.p1;
+    ctx.fillText(g.p1.score,W/2,H*0.72);
+    ctx.globalAlpha=1;
+  }
 
   // powerups
   for(var pi=0;pi<PU.length;pi++){
