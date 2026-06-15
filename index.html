@@ -872,6 +872,8 @@ function startArk() {
   document.getElementById('s1').style.visibility='hidden';
   document.getElementById('s2').style.visibility='hidden';
 
+  // Reset palette to default green (ark has its own bg draw)
+  pal=cpPal(PALS[0]); palFrom=cpPal(PALS[0]); palTo=PALS[0]; palT=1; palTimer=0;
   // Show arkanoid canvas (reuse #game but without huds visible)
   gameEl.style.display='flex';
 
@@ -895,7 +897,7 @@ function initArkRound(round, score) {
   ark = {
     round: round,
     score: score,
-    lives: ark ? ark.lives : 3,
+    lives: (ark && ark.lives>0) ? ark.lives : 3,
     paddle: { cx: W/2, w: padW, h: Math.max(10, H*0.022) },
     ball: { x: W/2, y: H*0.78, vx: Math.cos(ang)*spd2, vy: Math.sin(ang)*spd2, r: ballR2, launched: false },
     blocks: buildBlocks(round),
@@ -907,15 +909,15 @@ function initArkRound(round, score) {
     over: false,
     buffs: {},       // active buffs {id: endTime}
     buffEnd: {},
-    drops: [],       // falling powerup drops
-    extraBalls: [],  // for multi-ball
-    sticky: false,   // ball stuck to paddle
+    drops: [],
+    extraBalls: [],
+    sticky: false,
   };
   arkTouchX = null; arkTouchId = null;
+  P = []; // clear global particles from previous round
 
   cancelAnimationFrame(arkAnimId);
   appState = 'game';
-  musStart(round);
   arkLoop();
 }
 
@@ -1137,8 +1139,12 @@ function updateArk() {
     SFX.win(); vib([40,20,40,20,80]);
     ark.paused=true;
     wsEl.style.display='none'; // hide any lingering win screen
+    musStop();
     setTimeout(function(){
-      if(appState==='game') initArkRound(ark.round+1, ark.score);
+      if(appState==='game'){
+        initArkRound(ark.round+1, ark.score);
+        // music starts on next tap (iOS gesture requirement)
+      }
     },1800);
   }
 }
@@ -1223,7 +1229,8 @@ function drawArk(){
   ctx.clearRect(0,0,W,H);
 
   // bg
-  ctx.fillStyle=pal.bg; ctx.fillRect(0,0,W,H);
+  // Ark always uses dark green bg regardless of pal
+  ctx.fillStyle='#050a05'; ctx.fillRect(0,0,W,H);
 
   // scanline-style round indicator
   ctx.font='7px "Press Start 2P",monospace';
@@ -1402,6 +1409,8 @@ cv.addEventListener('touchstart',function(e){
       var ang=-Math.PI/2+(Math.random()-0.5)*0.4;
       ark.ball.vx=Math.cos(ang)*spd2; ark.ball.vy=Math.sin(ang)*spd2;
       SFX.paddle(1);
+      // start music on first user gesture (iOS requires this)
+      if(!MUS.running) musStart(ark.round);
     }
     arkTouchId=t.identifier; arkTouchX=tx;
     return;
