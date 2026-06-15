@@ -860,27 +860,8 @@ function drawV2() {
 
 function drawPaddle(cx, cy, hw, h, flip) {
   const ctx2 = ctx;
-  // Glow
-  const grad = ctx2.createLinearGradient(cx-hw, cy, cx+hw, cy);
-  grad.addColorStop(0,   'rgba(0,255,65,0)');
-  grad.addColorStop(0.3, 'rgba(0,255,65,0.6)');
-  grad.addColorStop(0.5, 'rgba(0,255,65,1)');
-  grad.addColorStop(0.7, 'rgba(0,255,65,0.6)');
-  grad.addColorStop(1,   'rgba(0,255,65,0)');
-
-  ctx2.fillStyle = grad;
+  ctx2.fillStyle = '#00ff41';
   ctx2.fillRect(cx-hw, cy-h/2, hw*2, h);
-
-  // Bright center line
-  ctx2.fillStyle = '#afffbf';
-  ctx2.fillRect(cx-hw*0.6, cy-1, hw*1.2, 2);
-
-  // Glow shadow
-  ctx2.shadowColor = '#00ff41';
-  ctx2.shadowBlur = 16;
-  ctx2.fillStyle = 'rgba(0,255,65,0.15)';
-  ctx2.fillRect(cx-hw, cy-h, hw*2, h*3);
-  ctx2.shadowBlur = 0;
 }
 
 function drawBall(x, y, r) {
