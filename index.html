@@ -17,16 +17,16 @@ body{display:flex;align-items:center;justify-content:center}
   background:#000;overflow:hidden;
 }
 #cabinet::after{
-  content:'';position:absolute;inset:0;pointer-events:none;z-index:100;
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:5;
   background:repeating-linear-gradient(to bottom,transparent 0px,transparent 3px,rgba(0,0,0,.14) 3px,rgba(0,0,0,.14) 4px);
 }
 #cabinet::before{
-  content:'';position:absolute;inset:0;pointer-events:none;z-index:101;
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:5;
   background:radial-gradient(ellipse at center,transparent 48%,rgba(0,0,0,.8) 100%);
 }
 
 /* ── MENU ── */
-#menu{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#menu{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .logo{font-family:'Press Start 2P',monospace;font-size:54px;color:#00ff41;letter-spacing:12px;margin-bottom:4px;text-shadow:0 0 10px #00ff41,0 0 40px #00ff41,0 0 80px rgba(0,255,65,.4)}
 .logo-sub{font-family:'Press Start 2P',monospace;font-size:7px;color:#007a1f;letter-spacing:4px;margin-bottom:32px}
 .coin{font-family:'Press Start 2P',monospace;font-size:9px;color:#ffb800;animation:blink 1s step-end infinite;margin-bottom:28px}
@@ -42,7 +42,7 @@ body{display:flex;align-items:center;justify-content:center}
 .hint-box .hv{font-family:'Press Start 2P',monospace;font-size:7px;color:#00ff41;line-height:1.9}
 
 /* ── GAME ── */
-#game{position:absolute;inset:0;display:none;flex-direction:column;z-index:10}
+#game{position:absolute;inset:0;display:none;flex-direction:column;z-index:20}
 .hud{height:66px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;flex-shrink:0;position:relative}
 .hud-top{border-bottom:1px solid #001a06;transform:rotate(180deg)}
 .hud-bottom{border-top:1px solid #001a06}
@@ -92,7 +92,7 @@ body{display:flex;align-items:center;justify-content:center}
 .psub{font-family:'Press Start 2P',monospace;font-size:8px;color:#007a1f}
 
 /* ── WIN ── */
-#win-screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:10;background:#000}
+#win-screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:20;background:#000}
 .win-lbl{font-family:'Press Start 2P',monospace;font-size:8px;color:#007a1f;letter-spacing:4px;margin-bottom:14px}
 .win-name{font-family:'Press Start 2P',monospace;font-size:30px;color:#00ff41;text-shadow:0 0 20px #00ff41;margin-bottom:8px;text-align:center;line-height:1.4}
 .win-sc{font-family:'Press Start 2P',monospace;font-size:12px;color:#ffb800;text-shadow:0 0 8px #ffb800;margin-bottom:36px}
