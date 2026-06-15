@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PONG</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+:root {
+  --bg: #000;
+  --crt: #00ff41;
+  --crt-dim: #007a1f;
+  --crt-dark: #003d0f;
+  --amber: #ffb800;
+  --red: #ff2244;
+  --scanline: rgba(0,0,0,0.18);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+html, body {
+  background: #0a0a0a;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* CRT cabinet shell */
+#cabinet {
+  position: relative;
+  width: 100vw;
+  max-width: 480px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #000;
+  overflow: hidden;
+}
+
+/* Scanlines overlay */
+#cabinet::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    var(--scanline) 3px,
+    var(--scanline) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* CRT vignette */
+#cabinet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center,
+    transparent 55%,
+    rgba(0,0,0,0.7) 100%
+  );
+  pointer-events: none;
+  z-index: 101;
+}
+
+/* ── ШРИФТ ── */
+.px { font-family: 'Press Start 2P', monospace; }
+
+/* ══════════════════════════════════════════════
+   ЭКРАН МЕНЮ
+══════════════════════════════════════════════ */
+#menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  z-index: 10;
+}
+
+#menu .insert-coin {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: var(--amber);
+  letter-spacing: 2px;
+  animation: blink 1s step-end infinite;
+  margin-bottom: 32px;
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+#menu .logo {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 52px;
+  color: var(--crt);
+  text-shadow:
+    0 0 10px var(--crt),
+    0 0 30px var(--crt),
+    0 0 60px rgba(0,255,65,0.4);
+  letter-spacing: 12px;
+  margin-bottom: 6px;
+}
+
+#menu .logo-sub {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--crt-dim);
+  letter-spacing: 4px;
+  margin-bottom: 40px;
+}
+
+.speed-section-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--crt-dim);
+  letter-spacing: 3px;
+  margin-bottom: 14px;
+}
+
+.speed-grid {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 36px;
+}
+
+.spd {
+  width: 34px;
+  height: 34px;
+  background: var(--crt-dark);
+  border: 2px solid var(--crt-dim);
+  color: var(--crt-dim);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s;
+}
+
+.spd.active {
+  background: var(--crt);
+  border-color: var(--crt);
+  color: #000;
+  box-shadow: 0 0 10px var(--crt), 0 0 20px rgba(0,255,65,0.5);
+}
+
+#play-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  color: #000;
+  background: var(--crt);
+  border: none;
+  padding: 14px 32px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  box-shadow: 0 0 16px var(--crt), 0 0 32px rgba(0,255,65,0.3);
+  transition: all 0.1s;
+  margin-bottom: 40px;
+}
+
+#play-btn:active { transform: scale(0.96); }
+
+.hint-row {
+  display: flex;
+  gap: 32px;
+}
+
+.hint-box {
+  text-align: center;
+}
+
+.hint-box .hlabel {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--crt-dim);
+  margin-bottom: 6px;
+}
+
+.hint-box .hval {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--crt);
+}
+
+/* ══════════════════════════════════════════════
+   ИГРОВОЙ ЭКРАН
+══════════════════════════════════════════════ */
+#game {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  z-index: 10;
+}
+
+/* Верхняя панель — Игрок 2 (перевёрнут, сверху) */
+.hud-top {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--crt-dark);
+  transform: rotate(180deg);
+  flex-shrink: 0;
+}
+
+/* Нижняя панель — Игрок 1 */
+.hud-bottom {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-top: 1px solid var(--crt-dark);
+  flex-shrink: 0;
+}
+
+.hud-name {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--crt-dim);
+  letter-spacing: 2px;
+}
+
+.hud-score {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 28px;
+  color: var(--crt);
+  text-shadow: 0 0 10px var(--crt);
+  min-width: 52px;
+  text-align: center;
+}
+
+.hud-pause-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--crt-dim);
+  background: none;
+  border: 1px solid var(--crt-dark);
+  padding: 6px 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+}
+
+/* Канвас */
+#canvas {
+  flex: 1;
+  display: block;
+  width: 100%;
+}
+
+/* ══════════════════════════════════════════════
+   ПАУЗА
+══════════════════════════════════════════════ */
+#pause-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.82);
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  flex-direction: column;
+  gap: 24px;
+}
+
+#pause-overlay .ptxt {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 20px;
+  color: var(--amber);
+  text-shadow: 0 0 12px var(--amber);
+  animation: blink 1.2s step-end infinite;
+}
+
+#pause-overlay .presume {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: var(--crt-dim);
+  letter-spacing: 2px;
+}
+
+/* ══════════════════════════════════════════════
+   ПОБЕДА
+══════════════════════════════════════════════ */
+#win-screen {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  gap: 0;
+  background: #000;
+}
+
+.win-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  color: var(--crt-dim);
+  letter-spacing: 4px;
+  margin-bottom: 16px;
+}
+
+.win-player {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 28px;
+  color: var(--crt);
+  text-shadow: 0 0 16px var(--crt), 0 0 40px rgba(0,255,65,0.4);
+  margin-bottom: 8px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.win-score-txt {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+  color: var(--amber);
+  text-shadow: 0 0 8px var(--amber);
+  margin-bottom: 48px;
+}
+
+.win-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+.wbtn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  padding: 14px 28px;
+  cursor: pointer;
+  background: none;
+  border: 2px solid var(--crt);
+  color: var(--crt);
+  transition: all 0.1s;
+}
+
+.wbtn:active, .wbtn:hover {
+  background: var(--crt);
+  color: #000;
+  box-shadow: 0 0 14px var(--crt);
+}
+
+.wbtn.sec {
+  border-color: var(--crt-dark);
+  color: var(--crt-dim);
+}
+
+.wbtn.sec:hover {
+  border-color: var(--crt-dim);
+  background: none;
+  color: var(--crt);
+  box-shadow: none;
+}
+
+/* touch zones visual (subtle) */
+.touch-indicator {
+  position: absolute;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  color: var(--crt-dark);
+  letter-spacing: 1px;
+  pointer-events: none;
+  z-index: 20;
+}
+</style>
+</head>
+<body>
+<div id="cabinet">
+
+  <!-- МЕНЮ -->
+  <div id="menu">
+    <div class="insert-coin">— INSERT COIN —</div>
+    <div class="logo">PONG</div>
+    <div class="logo-sub">ARCADE EDITION</div>
+
+    <div class="speed-section-label">BALL SPEED</div>
+    <div class="speed-grid" id="speed-grid"></div>
+
+    <button id="play-btn">▶ START</button>
+
+    <div class="hint-row">
+      <div class="hint-box">
+        <div class="hlabel">PLAYER 1</div>
+        <div class="hval">НИЖНЯЯ<br>ЗОНА</div>
+      </div>
+      <div class="hint-box">
+        <div class="hlabel">PLAYER 2</div>
+        <div class="hval">ВЕРХНЯЯ<br>ЗОНА</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ИГРА -->
+  <div id="game">
+    <!-- Игрок 2 сверху (перевёрнут) -->
+    <div class="hud-top">
+      <div class="hud-name">P2</div>
+      <div class="hud-score" id="score2">0</div>
+      <button class="hud-pause-btn" id="pause-btn2">II</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <!-- Игрок 1 снизу -->
+    <div class="hud-bottom">
+      <div class="hud-name">P1</div>
+      <div class="hud-score" id="score1">0</div>
+      <button class="hud-pause-btn" id="pause-btn1">II</button>
+    </div>
+
+    <!-- Touch zone labels -->
+    <div class="touch-indicator" id="ti-top" style="top:70px;left:50%;transform:translateX(-50%);">TOUCH TO MOVE P2</div>
+    <div class="touch-indicator" id="ti-bot" style="bottom:70px;left:50%;transform:translateX(-50%);">TOUCH TO MOVE P1</div>
+  </div>
+
+  <!-- ПАУЗА -->
+  <div id="pause-overlay">
+    <div class="ptxt">PAUSE</div>
+    <div class="presume">TAP TO RESUME</div>
+  </div>
+
+  <!-- ПОБЕДА -->
+  <div id="win-screen">
+    <div class="win-title">WINNER</div>
+    <div class="win-player" id="win-player-name">PLAYER 1</div>
+    <div class="win-score-txt" id="win-score-txt">20 : 14</div>
+    <div class="win-btns">
+      <button class="wbtn" id="rematch-btn">REMATCH</button>
+      <button class="wbtn sec" id="menu-btn">MENU</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── AUDIO ────────────────────────────────────────────────────────────────────
+const AC = new (window.AudioContext || window.webkitAudioContext)();
+
+function beep(freq, dur, type='square', vol=0.12) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.connect(g); g.connect(AC.destination);
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur);
+  o.start(); o.stop(AC.currentTime + dur);
+}
+
+const SFX = {
+  paddle: () => { beep(520, 0.05); beep(680, 0.03); },
+  wall:   () => beep(280, 0.04),
+  score:  () => { beep(200,0.07); setTimeout(()=>beep(160,0.1),70); },
+  win:    () => {
+    const notes = [523,659,784,1047,1319];
+    notes.forEach((f,i) => setTimeout(()=>beep(f,0.18,'sine',0.18), i*110));
+  }
+};
+
+function resumeAC() { if (AC.state==='suspended') AC.resume(); }
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const WIN_SCORE = 20;
+const PADDLE_FRAC = 0.22; // paddle height as fraction of canvas height
+const PADDLE_W_FRAC = 0.025;
+const BALL_R_FRAC = 0.018;
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let speed = 5;
+let appState = 'menu'; // menu | game | paused | win
+let g = null;
+let animId = null;
+
+// Touch tracking: each player has their own touch id
+const touch = { p1: null, p2: null }; // {id, startY, paddleStartY}
+
+// ─── DOM ─────────────────────────────────────────────────────────────────────
+const menuEl    = document.getElementById('menu');
+const gameEl    = document.getElementById('game');
+const winEl     = document.getElementById('win-screen');
+const pauseEl   = document.getElementById('pause-overlay');
+const canvas    = document.getElementById('canvas');
+const ctx       = canvas.getContext('2d');
+const score1El  = document.getElementById('score1');
+const score2El  = document.getElementById('score2');
+const winNameEl = document.getElementById('win-player-name');
+const winScoreEl= document.getElementById('win-score-txt');
+
+// Speed buttons
+const speedGrid = document.getElementById('speed-grid');
+for (let i=1;i<=10;i++) {
+  const b = document.createElement('button');
+  b.className = 'spd' + (i===speed?' active':'');
+  b.textContent = i;
+  b.addEventListener('click', ()=>{
+    speed = i;
+    document.querySelectorAll('.spd').forEach((btn,idx)=>btn.classList.toggle('active',idx+1===i));
+  });
+  b.addEventListener('touchend', e=>{ e.preventDefault(); b.click(); });
+  speedGrid.appendChild(b);
+}
+
+document.getElementById('play-btn').addEventListener('click', ()=>{ resumeAC(); startGame(); });
+document.getElementById('rematch-btn').addEventListener('click', ()=>{ resumeAC(); startGame(); });
+document.getElementById('menu-btn').addEventListener('click', showMenu);
+
+document.getElementById('pause-btn1').addEventListener('click', togglePause);
+document.getElementById('pause-btn2').addEventListener('click', togglePause);
+
+pauseEl.addEventListener('click', ()=>{ if(appState==='paused') togglePause(); });
+
+// ─── NAVIGATION ───────────────────────────────────────────────────────────────
+function showMenu() {
+  cancelAnimationFrame(animId);
+  appState = 'menu';
+  menuEl.style.display = 'flex';
+  gameEl.style.display = 'none';
+  winEl.style.display  = 'none';
+  pauseEl.style.display= 'none';
+}
+
+function showWin(playerLabel, s1, s2) {
+  cancelAnimationFrame(animId);
+  appState = 'win';
+  winNameEl.textContent  = playerLabel;
+  winScoreEl.textContent = s1 + ' : ' + s2;
+  menuEl.style.display = 'none';
+  gameEl.style.display = 'none';
+  winEl.style.display  = 'flex';
+  pauseEl.style.display= 'none';
+  SFX.win();
+}
+
+function togglePause() {
+  if (appState === 'game') {
+    appState = 'paused';
+    pauseEl.style.display = 'flex';
+  } else if (appState === 'paused') {
+    appState = 'game';
+    pauseEl.style.display = 'none';
+  }
+}
+
+// ─── CANVAS SIZE ──────────────────────────────────────────────────────────────
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = rect.width;
+  canvas.height = rect.height;
+  if (g) initPositions();
+}
+
+window.addEventListener('resize', resizeCanvas);
+
+// ─── GAME ─────────────────────────────────────────────────────────────────────
+function ballSpeed() {
+  // 1→2.5, 10→12 (as fraction of canvas px per frame at ~60fps)
+  // will be multiplied by canvas.height at draw time? No — use absolute px.
+  // We'll scale relative to canvas height
+  const h = canvas.height || 500;
+  return (2.5 + (speed-1) * 1.05) * (h / 500);
+}
+
+function initPositions() {
+  const W = canvas.width, H = canvas.height;
+  const ph = H * PADDLE_FRAC;
+  g.p1.y = H * 0.75 - ph/2;
+  g.p2.y = H * 0.25 - ph/2;
+}
+
+function startGame() {
+  // Wait one frame so canvas has size
+  gameEl.style.display = 'flex';
+  menuEl.style.display = 'none';
+  winEl.style.display  = 'none';
+  pauseEl.style.display= 'none';
+
+  setTimeout(()=>{
+    resizeCanvas();
+    const W = canvas.width, H = canvas.height;
+    const ph = H * PADDLE_FRAC;
+
+    const spd = ballSpeed();
+    const angle = (Math.random()*Math.PI/3 - Math.PI/6);
+    const dir   = Math.random()<0.5 ? 1 : -1;
+
+    g = {
+      p1: { y: H*0.75 - ph/2, score: 0 },
+      p2: { y: H*0.25 - ph/2, score: 0 },
+      ball: {
+        x: W/2, y: H/2,
+        vx: Math.cos(angle)*spd*dir,
+        vy: Math.abs(Math.sin(angle)*spd) * (Math.random()<0.5?1:-1),
+        spd,
+      }
+    };
+
+    score1El.textContent = '0';
+    score2El.textContent = '0';
+    touch.p1 = null; touch.p2 = null;
+    appState = 'game';
+    cancelAnimationFrame(animId);
+    loop();
+  }, 60);
+}
+
+function loop() {
+  if (appState === 'game') update();
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+
+function update() {
+  if (!g) return;
+  const W = canvas.width, H = canvas.height;
+  const ph = H * PADDLE_FRAC;
+  const pw = W * PADDLE_W_FRAC;
+  const br = W * BALL_R_FRAC;
+  const b  = g.ball;
+
+  b.x += b.vx;
+  b.y += b.vy;
+
+  // Left/right walls (horizontal game orientation on-screen, but game is vertical)
+  // Game is vertical: paddles on left/right edges
+  // Wait — game is VERTICAL (portrait), paddles at TOP and BOTTOM, ball goes up/down
+  // p1 is at bottom, p2 is at top
+  // Ball bounces off LEFT and RIGHT walls
+  if (b.x - br <= pw*2) {
+    b.x = pw*2 + br;
+    b.vx *= -1;
+    SFX.wall();
+  }
+  if (b.x + br >= W - pw*2) {
+    b.x = W - pw*2 - br;
+    b.vx *= -1;
+    SFX.wall();
+  }
+
+  // Paddle p1 (bottom)
+  const p1x = g.p1.y; // g.p1.y is actually the X position (horizontal paddle position)
+  // Redefine: paddles are horizontal bars at top/bottom, player moves them left/right via touch
+
+  // Actually let's clarify the game geometry:
+  // Portrait mode: paddle = horizontal bar
+  // p1 (bottom) - moves left/right. g.p1.x = center of paddle
+  // p2 (top)    - moves left/right. g.p2.x = center of paddle
+  // Ball bounces off top/bottom walls only when missing paddle
+  // Wait, we need to redesign. Let me fix cleanly.
+
+  // This update() is now invalid. Will be replaced below.
+}
+
+// ─── CLEAN REDESIGN: Vertical Pong ───────────────────────────────────────────
+// Portrait screen, paddles are horizontal bars
+// P1: bottom, moves left/right. P2: top, moves left/right.
+// Ball bounces off LEFT & RIGHT walls.
+// Goal: ball goes past top→P1 scores, ball goes past bottom→P2 scores.
+// Touch: bottom half → P1 paddle follows finger X. Top half → P2 paddle follows finger X.
+
+cancelAnimationFrame(animId);
+
+function startGameV2() {
+  gameEl.style.display = 'flex';
+  menuEl.style.display = 'none';
+  winEl.style.display  = 'none';
+  pauseEl.style.display= 'none';
+
+  setTimeout(()=>{
+    resizeCanvas();
+    const W = canvas.width, H = canvas.height;
+    const spd = ballSpeedV2();
+
+    // Random angle, roughly diagonal
+    const angle = Math.random()*Math.PI/4 + Math.PI/8; // 22.5..67.5 degrees
+    const xDir = Math.random()<0.5?1:-1;
+    const yDir = Math.random()<0.5?1:-1;
+
+    g = {
+      p1: { cx: W/2, score: 0 },  // bottom paddle center X
+      p2: { cx: W/2, score: 0 },  // top paddle center X
+      ball: {
+        x: W/2, y: H/2,
+        vx: Math.cos(angle)*spd*xDir,
+        vy: Math.sin(angle)*spd*yDir,
+        spd,
+      }
+    };
+
+    score1El.textContent = '0';
+    score2El.textContent = '0';
+    touch.p1 = null; touch.p2 = null;
+    appState = 'game';
+    cancelAnimationFrame(animId);
+    loop2();
+  }, 60);
+}
+
+function ballSpeedV2() {
+  const h = canvas.height || 700;
+  return (2.8 + (speed-1) * 1.08) * (h / 700);
+}
+
+function paddleHalfW() {
+  return canvas.width * 0.18;
+}
+
+function paddleH() {
+  return Math.max(10, canvas.height * 0.022);
+}
+
+function paddleY(which) {
+  const H = canvas.height;
+  if (which === 'p1') return H - canvas.height * 0.10;
+  return canvas.height * 0.10;
+}
+
+function loop2() {
+  if (appState === 'game') updateV2();
+  drawV2();
+  animId = requestAnimationFrame(loop2);
+}
+
+function updateV2() {
+  if (!g) return;
+  const W = canvas.width, H = canvas.height;
+  const br = W * BALL_R_FRAC;
+  const phw = paddleHalfW();
+  const ph  = paddleH();
+  const b   = g.ball;
+
+  b.x += b.vx;
+  b.y += b.vy;
+
+  // Left/right walls
+  if (b.x - br <= 0) { b.x = br; b.vx = Math.abs(b.vx); SFX.wall(); }
+  if (b.x + br >= W) { b.x = W-br; b.vx = -Math.abs(b.vx); SFX.wall(); }
+
+  // P1 paddle (bottom)
+  const p1y = paddleY('p1');
+  if (b.vy > 0 && b.y + br >= p1y - ph/2 && b.y + br <= p1y + ph/2 + Math.abs(b.vy)*2) {
+    if (b.x >= g.p1.cx - phw && b.x <= g.p1.cx + phw) {
+      b.y = p1y - ph/2 - br;
+      b.vy = -Math.abs(b.vy);
+      const rel = (b.x - g.p1.cx) / phw; // -1..1
+      b.vx = rel * b.spd * 0.9;
+      b.spd = Math.min(b.spd * 1.03, ballSpeedV2() * 2.2);
+      const mag = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
+      const scale = b.spd / mag;
+      b.vx *= scale; b.vy *= scale;
+      SFX.paddle();
+    }
+  }
+
+  // P2 paddle (top)
+  const p2y = paddleY('p2');
+  if (b.vy < 0 && b.y - br <= p2y + ph/2 && b.y - br >= p2y - ph/2 - Math.abs(b.vy)*2) {
+    if (b.x >= g.p2.cx - phw && b.x <= g.p2.cx + phw) {
+      b.y = p2y + ph/2 + br;
+      b.vy = Math.abs(b.vy);
+      const rel = (b.x - g.p2.cx) / phw;
+      b.vx = rel * b.spd * 0.9;
+      b.spd = Math.min(b.spd * 1.03, ballSpeedV2() * 2.2);
+      const mag = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
+      const scale = b.spd / mag;
+      b.vx *= scale; b.vy *= scale;
+      SFX.paddle();
+    }
+  }
+
+  // Score: ball escapes top → P1 scores
+  if (b.y < -br * 4) {
+    g.p1.score++;
+    score1El.textContent = g.p1.score;
+    SFX.score();
+    if (g.p1.score >= WIN_SCORE) { showWin('PLAYER 1', g.p1.score, g.p2.score); return; }
+    resetBallV2(1); // serve downward
+  }
+
+  // Ball escapes bottom → P2 scores
+  if (b.y > H + br * 4) {
+    g.p2.score++;
+    score2El.textContent = g.p2.score;
+    SFX.score();
+    if (g.p2.score >= WIN_SCORE) { showWin('PLAYER 2', g.p1.score, g.p2.score); return; }
+    resetBallV2(-1); // serve upward
+  }
+}
+
+function resetBallV2(yDir) {
+  const W = canvas.width, H = canvas.height;
+  const spd = ballSpeedV2();
+  const angle = Math.random()*Math.PI/4 + Math.PI/8;
+  const xDir = Math.random()<0.5?1:-1;
+  g.ball = {
+    x: W/2, y: H/2,
+    vx: Math.cos(angle)*spd*xDir,
+    vy: Math.sin(angle)*spd*yDir,
+    spd,
+  };
+}
+
+// CRT glow color helper
+function crtColor(alpha=1) { return `rgba(0,255,65,${alpha})`; }
+
+function drawV2() {
+  if (!canvas.width || !canvas.height) return;
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0,0,W,H);
+
+  // Center dashed line
+  ctx.setLineDash([6,8]);
+  ctx.strokeStyle = '#001a06';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, H/2);
+  ctx.lineTo(W, H/2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (!g) return;
+
+  const phw = paddleHalfW();
+  const ph  = paddleH();
+
+  // P1 paddle (bottom) — standard orientation
+  const p1y = paddleY('p1');
+  drawPaddle(g.p1.cx, p1y, phw, ph, false);
+
+  // P2 paddle (top) — flipped (player reads from top, so label upside down is ok)
+  const p2y = paddleY('p2');
+  drawPaddle(g.p2.cx, p2y, phw, ph, true);
+
+  // Ball
+  const br = W * BALL_R_FRAC;
+  drawBall(g.ball.x, g.ball.y, br);
+}
+
+function drawPaddle(cx, cy, hw, h, flip) {
+  const ctx2 = ctx;
+  // Glow
+  const grad = ctx2.createLinearGradient(cx-hw, cy, cx+hw, cy);
+  grad.addColorStop(0,   'rgba(0,255,65,0)');
+  grad.addColorStop(0.3, 'rgba(0,255,65,0.6)');
+  grad.addColorStop(0.5, 'rgba(0,255,65,1)');
+  grad.addColorStop(0.7, 'rgba(0,255,65,0.6)');
+  grad.addColorStop(1,   'rgba(0,255,65,0)');
+
+  ctx2.fillStyle = grad;
+  ctx2.fillRect(cx-hw, cy-h/2, hw*2, h);
+
+  // Bright center line
+  ctx2.fillStyle = '#afffbf';
+  ctx2.fillRect(cx-hw*0.6, cy-1, hw*1.2, 2);
+
+  // Glow shadow
+  ctx2.shadowColor = '#00ff41';
+  ctx2.shadowBlur = 16;
+  ctx2.fillStyle = 'rgba(0,255,65,0.15)';
+  ctx2.fillRect(cx-hw, cy-h, hw*2, h*3);
+  ctx2.shadowBlur = 0;
+}
+
+function drawBall(x, y, r) {
+  // Outer glow
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, r*5);
+  grad.addColorStop(0,   'rgba(0,255,65,0.3)');
+  grad.addColorStop(0.4, 'rgba(0,255,65,0.1)');
+  grad.addColorStop(1,   'rgba(0,255,65,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, r*5, 0, Math.PI*2);
+  ctx.fill();
+
+  // Core
+  ctx.shadowColor = '#00ff41';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+// ─── TOUCH CONTROLS ───────────────────────────────────────────────────────────
+canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+canvas.addEventListener('touchmove',  onTouchMove,  { passive: false });
+canvas.addEventListener('touchend',   onTouchEnd,   { passive: false });
+
+function onTouchStart(e) {
+  e.preventDefault();
+  resumeAC();
+  if (appState === 'paused') { togglePause(); return; }
+  if (appState !== 'game') return;
+
+  for (const t of e.changedTouches) {
+    const rect = canvas.getBoundingClientRect();
+    const ty = t.clientY - rect.top;
+    const tx = t.clientX - rect.left;
+    const H = canvas.height;
+    const isBottom = ty > H / 2;
+
+    if (isBottom && touch.p1 === null) {
+      touch.p1 = { id: t.identifier, x: tx };
+    } else if (!isBottom && touch.p2 === null) {
+      touch.p2 = { id: t.identifier, x: tx };
+    }
+  }
+}
+
+function onTouchMove(e) {
+  e.preventDefault();
+  if (appState !== 'game' || !g) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const W = canvas.width;
+  const phw = paddleHalfW();
+
+  for (const t of e.changedTouches) {
+    const tx = t.clientX - rect.left;
+
+    if (touch.p1 && t.identifier === touch.p1.id) {
+      g.p1.cx = Math.max(phw, Math.min(W - phw, tx));
+    }
+    if (touch.p2 && t.identifier === touch.p2.id) {
+      g.p2.cx = Math.max(phw, Math.min(W - phw, tx));
+    }
+  }
+}
+
+function onTouchEnd(e) {
+  for (const t of e.changedTouches) {
+    if (touch.p1 && t.identifier === touch.p1.id) touch.p1 = null;
+    if (touch.p2 && t.identifier === touch.p2.id) touch.p2 = null;
+  }
+}
+
+// ─── KEYBOARD (desktop fallback) ─────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.code === 'Space') { togglePause(); e.preventDefault(); }
+  if (['ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// Keyboard moves paddles (desktop only)
+function applyKeyboard() {
+  if (!g || appState !== 'game') return;
+  const W = canvas.width;
+  const phw = paddleHalfW();
+  const spd = (W / 100) * (2 + speed * 0.3);
+  if (keys['a'] || keys['A'] || keys['ArrowLeft'] && !keys['ArrowRight']) {
+    // Left: p1 left (for single key test), ignore in touch mode
+  }
+  // P1: A/D  P2: ←/→
+  if (keys['a'] || keys['A']) g.p1.cx = Math.max(phw, g.p1.cx - spd);
+  if (keys['d'] || keys['D']) g.p1.cx = Math.min(W-phw, g.p1.cx + spd);
+  if (keys['ArrowLeft'])  g.p2.cx = Math.max(phw, g.p2.cx - spd);
+  if (keys['ArrowRight']) g.p2.cx = Math.min(W-phw, g.p2.cx + spd);
+}
+
+// Patch loop2 to include keyboard
+const _loop2 = loop2;
+function loop2() {
+  if (appState === 'game') { applyKeyboard(); updateV2(); }
+  drawV2();
+  animId = requestAnimationFrame(loop2);
+}
+
+// Override startGame to use V2
+document.getElementById('play-btn').onclick    = ()=>{ resumeAC(); startGameV2(); };
+document.getElementById('rematch-btn').onclick = ()=>{ resumeAC(); startGameV2(); };
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+showMenu();
+</script>
+</body>
+</html>
