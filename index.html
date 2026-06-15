@@ -631,9 +631,13 @@ function startGame(){
   gameEl.style.display='flex';menuEl.style.display='none';
   winEl.style.display='none';pauseEl.style.display='none';
   unlocked.clear();
-  setTimeout(()=>{
+  function tryInit(attempts){
     resizeCanvas();
     const W=canvas.width,H=canvas.height;
+    if((W<10||H<10)&&attempts>0){ setTimeout(()=>tryInit(attempts-1),50); return; }
+    // fallback: use window size minus huds
+    if(W<10){ canvas.width=Math.min(480,window.innerWidth); }
+    if(H<10){ canvas.height=window.innerHeight-132; }
     const spd=ballSpd();
     const ang=Math.random()*Math.PI/4+Math.PI/8;
     const xd=Math.random()<.5?1:-1,yd=Math.random()<.5?1:-1;
@@ -652,7 +656,8 @@ function startGame(){
     appState='game';
     cancelAnimationFrame(animId);
     loop();
-  },60);
+  }
+  setTimeout(()=>tryInit(10),80);
 }
 
 // ═══════════════════════════════════════════
