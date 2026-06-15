@@ -23,6 +23,10 @@ body{display:flex;align-items:center;justify-content:center}
 .sgrid{display:flex;gap:5px;margin-bottom:20px}
 .sbtn{width:29px;height:29px;background:#001a06;border:2px solid #007a1f;color:#007a1f;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .sbtn.on{background:#00ff41;border-color:#00ff41;color:#000;box-shadow:0 0 10px #00ff41}
+.mbtn{padding:9px 14px;background:#001a06;border:2px solid #007a1f;color:#007a1f;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer;letter-spacing:1px}
+.mbtn.on{background:#00cfff;border-color:#00cfff;color:#000;box-shadow:0 0 10px #00cfff}
+.dbtn{padding:7px 10px;background:#001a06;border:2px solid #007a1f;color:#007a1f;font-family:'Press Start 2P',monospace;font-size:7px;cursor:pointer}
+.dbtn.on{background:#ffb800;border-color:#ffb800;color:#000;box-shadow:0 0 8px #ffb800}
 /* WIN TARGET SELECTOR */
 .wgrid{display:flex;gap:8px;margin-bottom:22px}
 .wbtn2{padding:8px 12px;background:#001a06;border:2px solid #007a1f;color:#007a1f;font-family:'Press Start 2P',monospace;font-size:8px;cursor:pointer}
@@ -90,8 +94,14 @@ body{display:flex;align-items:center;justify-content:center}
     <div class="sgrid" id="sg"></div>
     <div class="mlbl">ПОБЕДА ДО</div>
     <div class="wgrid" id="wg"></div>
+    <div class="mlbl">РЕЖИМ</div>
+    <div class="sgrid" style="margin-bottom:18px" id="mg"></div>
+    <div id="diff-row" style="display:none;flex-direction:column;align-items:center;gap:8px;margin-bottom:18px">
+      <div class="mlbl">СЛОЖНОСТЬ AI</div>
+      <div class="sgrid" id="dg"></div>
+    </div>
     <button id="pb">▶ START GAME</button>
-    <div class="hr">
+    <div class="hr" id="ctrl-hint">
       <div class="hb"><div class="hl">PLAYER 1</div><div class="hv">НИЖНЯЯ<br>ЗОНА</div></div>
       <div class="hb"><div class="hl">PLAYER 2</div><div class="hv">ВЕРХНЯЯ<br>ЗОНА</div></div>
     </div>
@@ -397,6 +407,8 @@ function updateTimers(){
 
 // ═══ GAME VARS ═══════════════════════════════════════
 var WIN_SCORE=20,spd=5,appState='menu',g=null,animId=null;
+var gameMode='2p'; // '2p' or 'ai'
+var aiDiff='medium'; // 'easy' 'medium' 'hard'
 var touchP1=null,touchP2=null,keys={};
 var trails=[[],[],[]];
 
@@ -434,6 +446,49 @@ for(var wi=0;wi<WIN_OPTIONS.length;wi++){
   })(WIN_OPTIONS[wi]);
 }
 
+// mode buttons
+var mg=document.getElementById('mg');
+var MODES=[{id:'2p',label:'2 ИГРОКА'},{id:'ai',label:'VS AI'}];
+for(var mi=0;mi<MODES.length;mi++){
+  (function(m){
+    var b=document.createElement('button');
+    b.className='mbtn'+(m.id===gameMode?' on':'');
+    b.textContent=m.label;
+    b.addEventListener('click',function(){
+      gameMode=m.id;
+      var all=document.querySelectorAll('.mbtn');
+      for(var j=0;j<all.length;j++) all[j].className='mbtn'+(MODES[j].id===gameMode?' on':'');
+      var dr=document.getElementById('diff-row');
+      var ch=document.getElementById('ctrl-hint');
+      if(gameMode==='ai'){
+        dr.style.display='flex';
+        ch.innerHTML='<div class="hb"><div class="hl">PLAYER 1</div><div class="hv">НИЖНЯЯ<br>ЗОНА</div></div><div class="hb"><div class="hl">AI</div><div class="hv">ВЕРХНЯЯ<br>ЗОНА</div></div>';
+      } else {
+        dr.style.display='none';
+        ch.innerHTML='<div class="hb"><div class="hl">PLAYER 1</div><div class="hv">НИЖНЯЯ<br>ЗОНА</div></div><div class="hb"><div class="hl">PLAYER 2</div><div class="hv">ВЕРХНЯЯ<br>ЗОНА</div></div>';
+      }
+    });
+    b.addEventListener('touchend',function(e){e.preventDefault();b.click();});
+    mg.appendChild(b);
+  })(MODES[mi]);
+}
+// difficulty buttons
+var dg=document.getElementById('dg');
+var DIFFS=[{id:'easy',label:'EASY'},{id:'medium',label:'MEDIUM'},{id:'hard',label:'HARD'}];
+for(var di=0;di<DIFFS.length;di++){
+  (function(d){
+    var b=document.createElement('button');
+    b.className='dbtn'+(d.id===aiDiff?' on':'');
+    b.textContent=d.label;
+    b.addEventListener('click',function(){
+      aiDiff=d.id;
+      var all=document.querySelectorAll('.dbtn');
+      for(var j=0;j<all.length;j++) all[j].className='dbtn'+(DIFFS[j].id===aiDiff?' on':'');
+    });
+    b.addEventListener('touchend',function(e){e.preventDefault();b.click();});
+    dg.appendChild(b);
+  })(DIFFS[di]);
+}
 document.getElementById('pb').addEventListener('click',function(){resumeAC();startGame();});
 document.getElementById('rb').addEventListener('click',function(){resumeAC();startGame();});
 document.getElementById('mb').addEventListener('click',showMenu);
@@ -543,6 +598,11 @@ function startGame(){
       streak:0,lastScorer:null,comeback:false,shieldSaved:false,chaosHits:0,tripleScore:false,bigballHit:false
     };
     s1El.textContent='0';s2El.textContent='0';
+    // update P2 HUD label for AI
+    var p2nameEls=document.querySelectorAll('.hn');
+    if(gameMode==='ai'){ // top hud is rotated, second .hn
+      // top hud p2 label
+    }
     updateBuffHUD('p1');updateBuffHUD('p2');
     touchP1=null;touchP2=null;appState='game';
     cancelAnimationFrame(animId);loop();
@@ -795,8 +855,64 @@ function drawBall(b){
   ctx.shadowBlur=0;
 }
 
+// ═══ AI ═════════════════════════════════════════════
+function updateAI(){
+  if(!g||gameMode!=='ai') return;
+  var W=cv.width;
+  // AI controls p2 (top paddle)
+  // p2 moves with touch in 2p mode, AI moves it here
+  var b=g.balls[0]; // track main ball
+  // find most threatening ball (closest to p2)
+  var target=g.balls[0];
+  for(var i=1;i<g.balls.length;i++){
+    if(Math.abs(g.balls[i].y-getPY('p2'))<Math.abs(target.y-getPY('p2'))) target=g.balls[i];
+  }
+
+  var aiSpd=(W/100)*(2+spd*0.3);
+  var pw=getPHW('p2');
+
+  // difficulty params
+  var reactionDelay, errorAmt, speedMult, predictionFactor;
+  if(aiDiff==='easy'){
+    reactionDelay=0.04; errorAmt=cv.width*0.12; speedMult=0.55; predictionFactor=0.2;
+  } else if(aiDiff==='medium'){
+    reactionDelay=0.12; errorAmt=cv.width*0.05; speedMult=0.82; predictionFactor=0.55;
+  } else { // hard
+    reactionDelay=0.28; errorAmt=cv.width*0.015; speedMult=1.1; predictionFactor=0.9;
+  }
+
+  // predict where ball will be when it reaches p2 y
+  var predictX=target.x;
+  if(target.vy<0){ // ball heading toward p2
+    var timeToReach=Math.abs((target.y-getPY('p2'))/target.vy);
+    predictX=target.x+target.vx*timeToReach*predictionFactor;
+    // bounce off walls
+    predictX=predictX%(W*2);
+    if(predictX<0) predictX=-predictX;
+    if(predictX>W) predictX=W*2-predictX;
+  }
+
+  // add error based on difficulty
+  if(!g.aiError || Math.random()<reactionDelay){
+    g.aiError=(Math.random()-0.5)*2*errorAmt;
+  }
+  var targetX=predictX+g.aiError;
+
+  // move toward target
+  var diff=targetX-g.p2.cx;
+  var freezeMod=(g.p1.buff==='freeze')?0.25:1;
+  var move=Math.min(Math.abs(diff), aiSpd*speedMult*freezeMod);
+  if(Math.abs(diff)>pw*0.15){
+    g.p2.cx+=diff>0?move:-move;
+  }
+  g.p2.cx=Math.max(pw,Math.min(W-pw,g.p2.cx));
+
+  // apply freeze to AI
+  if(g.p1.buff==='freeze') g.p2.cx=g.p2.cx; // movement already reduced above
+}
+
 // ═══ LOOP ════════════════════════════════════════════
-function loop(){applyKeys();if(appState==='game')update();draw();animId=requestAnimationFrame(loop);}
+function loop(){applyKeys();if(appState==='game'&&gameMode==='ai')updateAI();if(appState==='game')update();draw();animId=requestAnimationFrame(loop);}
 
 // ═══ TOUCH ═══════════════════════════════════════════
 cv.addEventListener('touchstart',function(e){
@@ -807,7 +923,7 @@ cv.addEventListener('touchstart',function(e){
   for(var i=0;i<e.changedTouches.length;i++){
     var t=e.changedTouches[i],ty=t.clientY-rect.top,tx=t.clientX-rect.left;
     if(ty>cv.height/2){if(!touchP1)touchP1={id:t.identifier};}
-    else{if(!touchP2)touchP2={id:t.identifier};}
+    else{if(gameMode!=='ai'&&!touchP2)touchP2={id:t.identifier};}
   }
 },{passive:false});
 cv.addEventListener('touchmove',function(e){
